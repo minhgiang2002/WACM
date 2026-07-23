@@ -29,17 +29,23 @@ export default function App() {
     try {
       const response = await fetch("/api/dashboard");
       if (!response.ok) {
-        throw new Error(`Phản hồi máy chủ lỗi: HTTP ${response.status}`);
+        let errDetail = `HTTP ${response.status} ${response.statusText}`;
+        try {
+          const errJson = await response.json();
+          if (errJson.error) errDetail += `: ${errJson.error}`;
+        } catch (_) {}
+        throw new Error(errDetail);
       }
       const data: DashboardData = await response.json();
-      setTargets(data.targets);
-      setScans(data.scans);
-      setSettings(data.settings);
-      setLogs(data.logs);
+      setTargets(data.targets || []);
+      setScans(data.scans || []);
+      setSettings(data.settings || { telegramToken: "", telegramChatId: "", slackWebhook: "", enableAutoAI: false, scanIntervalHours: 12 });
+      setLogs(data.logs || []);
       setError("");
     } catch (err: any) {
       console.error("Lỗi lấy dữ liệu dashboard:", err);
-      setError("Không thể thiết lập kết nối đến máy chủ WACM. Vui lòng kiểm tra cổng dịch vụ backend.");
+      const msg = err?.message || "Không thể thiết lập kết nối đến máy chủ WACM.";
+      setError(`Không thể thiết lập kết nối đến máy chủ WACM (${msg}). Vui lòng kiểm tra cổng dịch vụ backend.`);
     } finally {
       if (!silent) setIsLoading(false);
     }
