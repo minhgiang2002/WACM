@@ -804,6 +804,17 @@ async function startServer() {
     }
   });
 
+  // Catch-all 404 handler for unmatched /api endpoints
+  app.use("/api/*", (req, res) => {
+    res.status(404).json({ error: `API endpoint không tồn tại: ${req.method} ${req.originalUrl || req.url}` });
+  });
+
+  // Express global error handling middleware
+  app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    console.error("Lỗi hệ thống Express:", err);
+    res.status(500).json({ error: "Lỗi nội bộ máy chủ: " + (err?.message || String(err)) });
+  });
+
   // --- Background Scheduler (Simulator) ---
   // We check if we need to auto-scan active targets periodically based on scanIntervalHours
   // To keep development responsive and simulate real periodic scanning, we run a check every 2 minutes
