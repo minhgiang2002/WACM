@@ -113,24 +113,28 @@ class DbHelper {
             fs.copyFileSync(seedPath, DB_PATH);
           } catch (e) {
             DbHelper.write(DbHelper.defaultDb);
-            return DbHelper.defaultDb;
+            return JSON.parse(JSON.stringify(DbHelper.defaultDb));
           }
         } else {
           DbHelper.write(DbHelper.defaultDb);
-          return DbHelper.defaultDb;
+          return JSON.parse(JSON.stringify(DbHelper.defaultDb));
         }
       }
       const data = fs.readFileSync(DB_PATH, "utf8");
+      if (!data || !data.trim()) {
+        DbHelper.write(DbHelper.defaultDb);
+        return JSON.parse(JSON.stringify(DbHelper.defaultDb));
+      }
       const db = JSON.parse(data);
       // Ensure arrays and objects exist
-      if (!db.targets) db.targets = [];
-      if (!db.scans) db.scans = [];
+      if (!Array.isArray(db.targets)) db.targets = [];
+      if (!Array.isArray(db.scans)) db.scans = [];
       if (!db.settings) db.settings = { ...DbHelper.defaultDb.settings };
-      if (!db.logs) db.logs = [];
+      if (!Array.isArray(db.logs)) db.logs = [];
       return db;
     } catch (e) {
       console.error("Lỗi đọc file db.json, khởi tạo lại mặc định:", e);
-      return DbHelper.defaultDb;
+      return JSON.parse(JSON.stringify(DbHelper.defaultDb));
     }
   }
 
@@ -436,7 +440,7 @@ Hãy đưa ra đánh giá khách quan. Nếu đó chỉ là một thay đổi th
 Đảm bảo chỉ phản hồi chuỗi JSON hợp lệ không chứa bất kỳ markdown nào xung quanh (không dùng \`\`\`json).`;
 
   const response = await ai.models.generateContent({
-    model: "gemini-3.5-flash",
+    model: "gemini-2.5-flash",
     contents: prompt,
     config: {
       responseMimeType: "application/json",
@@ -491,13 +495,23 @@ async function startServer(options: { listen?: boolean } = {}) {
 
   // 1. Get targets, logs, settings
   app.get("/api/dashboard", (req, res) => {
-    const db = DbHelper.read();
-    res.json({
-      targets: db.targets,
-      scans: db.scans.map(s => ({ ...s, content: undefined })), // Omit large contents for dashboard view
-      settings: db.settings,
-      logs: db.logs
-    });
+    try {
+      const db = DbHelper.read();
+      const targets = Array.isArray(db.targets) ? db.targets : [];
+      const scans = Array.isArray(db.scans) ? db.scans.map(s => ({ ...s, content: undefined })) : [];
+      const settings = db.settings || { telegramToken: "", telegramChatId: "", slackWebhook: "", enableAutoAI: false, scanIntervalHours: 12 };
+      const logs = Array.isArray(db.logs) ? db.logs : [];
+
+      res.json({
+        targets,
+        scans,
+        settings,
+        logs
+      });
+    } catch (err: any) {
+      console.error("Lỗi API /api/dashboard:", err);
+      res.status(500).json({ error: "Không thể lấy dữ liệu dashboard: " + (err?.message || String(err)) });
+    }
   });
 
   // 2. Add Target

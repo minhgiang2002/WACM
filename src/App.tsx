@@ -24,15 +24,29 @@ export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false);
 
   // Sync data with the backend API
-  const fetchDashboardData = async (silent = false) => {
-    if (!silent) setIsLoading(true);
+  const fetchDashboardData = async (silent = false, retryCount = 0) => {
+    if (!silent && retryCount === 0) setIsLoading(true);
     try {
       const response = await fetch("/api/dashboard");
       if (!response.ok) {
-        let errDetail = `HTTP ${response.status} ${response.statusText}`;
+        let errDetail = `HTTP ${response.status}`;
+        if (response.statusText) {
+          errDetail += ` ${response.statusText}`;
+        }
         try {
-          const errJson = await response.json();
-          if (errJson.error) errDetail += `: ${errJson.error}`;
+          const text = await response.text();
+          if (text) {
+            try {
+              const errJson = JSON.parse(text);
+              if (errJson.error) {
+                errDetail += `: ${errJson.error}`;
+              } else {
+                errDetail += `: ${text.substring(0, 100)}`;
+              }
+            } catch (_) {
+              errDetail += `: ${text.substring(0, 100)}`;
+            }
+          }
         } catch (_) {}
         throw new Error(errDetail);
       }
@@ -44,10 +58,17 @@ export default function App() {
       setError("");
     } catch (err: any) {
       console.error("Lỗi lấy dữ liệu dashboard:", err);
-      const msg = err?.message || "Không thể thiết lập kết nối đến máy chủ WACM.";
-      setError(`Không thể thiết lập kết nối đến máy chủ WACM (${msg}). Vui lòng kiểm tra cổng dịch vụ backend.`);
+      // Auto-retry up to 2 times if server is warming up
+      if (retryCount < 2) {
+        setTimeout(() => {
+          fetchDashboardData(silent, retryCount + 1);
+        }, 1200);
+        return;
+      }
+      const msg = err?.message || "Không thể kết nối máy chủ WACM";
+      setError(`Không thể thiết lập kết nối đến máy chủ WACM (${msg}). Vui lòng kiểm tra dịch vụ backend.`);
     } finally {
-      if (!silent) setIsLoading(false);
+      if (!silent && retryCount === 0) setIsLoading(false);
     }
   };
 
@@ -202,18 +223,52 @@ export default function App() {
   if (error) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center text-center p-4 font-sans">
-        <div className="p-5 bg-white border border-slate-200 rounded-2xl max-w-md space-y-4 shadow-xl">
-          <ShieldAlert className="w-12 h-12 text-rose-600 mx-auto" />
-          <div className="space-y-1">
-            <h2 className="text-base font-display font-bold text-rose-600">Kết nối máy chủ thất bại</h2>
-            <p className="text-xs text-slate-500 leading-relaxed">{error}</p>
+        <div className="p-6 bg-white border border-slate-200 rounded-2xl max-w-md w-full space-y-4 shadow-xl">
+          <div className="w-12 h-12 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center mx-auto border border-rose-100">
+            <ShieldAlert className="w-6 h-6 text-rose-600" />
           </div>
-          <button
-            onClick={() => fetchDashboardData()}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-xs font-semibold rounded-lg text-white transition shadow-sm"
-          >
-            <RefreshCw className="w-3.5 h-3.5" /> Thử kết nối lại
-          </button>
+          <div className="space-y-1.5">
+            <h2 className="text-base font-display font-bold text-slate-800">Kết nối máy chủ thất bại</h2>
+            <p className="text-xs text-slate-500 leading-relaxed bg-slate-50 p-2.5 rounded-lg border border-slate-100 font-mono text-[11px] break-all">{error}</p>
+          </div>
+
+          <div className="pt-2 space-y-2">
+            <button
+              onClick={() => {
+                setError("");
+                fetchDashboardData();
+              }}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-xs font-semibold rounded-lg text-white transition shadow-sm active:scale-95"
+            >
+              <RefreshCw className="w-3.5 h-3.5 animate-spin-slow" /> Thử kết nối lại ngay
+            </button>
+
+            <button
+              onClick={() => {
+                setError("");
+                setTargets([
+                  {
+                    id: "target-1",
+                    name: "Tailwind CSS CDN Stylesheet",
+                    url: "https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css",
+                    type: "css",
+                    userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) WebAssetChangeMonitor/1.0",
+                    headers: "{}",
+                    lastScanned: new Date().toISOString(),
+                    lastHash: "8b8144e5df50485f68d3715614966a116e22789bad4c88e1010e5d10aa5a7537",
+                    status: "active",
+                    error: null,
+                    createdAt: new Date().toISOString()
+                  }
+                ]);
+                setSettings({ telegramToken: "", telegramChatId: "", slackWebhook: "", enableAutoAI: false, scanIntervalHours: 12 });
+                setLogs([{ timestamp: new Date().toISOString(), message: "Chế độ trải nghiệm ngoại tuyến (Demo mode) đã kích hoạt.", type: "warn" }]);
+              }}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-medium rounded-lg transition"
+            >
+              Dùng chế độ trải nghiệm tạm thời
+            </button>
+          </div>
         </div>
       </div>
     );
