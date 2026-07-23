@@ -4,12 +4,12 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
-      "source": "/api/(.*)",
-      "destination": "/api/index"
+      "source": "/api",
+      "destination": "/api"
     },
     {
-      "source": "/api",
-      "destination": "/api/index"
+      "source": "/api/:path*",
+      "destination": "/api?path=:path*"
     },
     {
       "source": "/((?!api/).*)",
@@ -19,7 +19,7 @@
   "crons": [
     {
       "path": "/api/cron",
-       "schedule": "0 0 * * *"
+      "schedule": "0 0 * * *"
     }
   ]
 }
