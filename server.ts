@@ -2,7 +2,6 @@ import express from "express";
 import path from "path";
 import fs from "fs";
 import crypto from "crypto";
-import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import { diffLines } from "diff";
 
@@ -113,12 +112,12 @@ class DbHelper {
           try {
             fs.copyFileSync(seedPath, DB_PATH);
           } catch (e) {
-            this.write(this.defaultDb);
-            return this.defaultDb;
+            DbHelper.write(DbHelper.defaultDb);
+            return DbHelper.defaultDb;
           }
         } else {
-          this.write(this.defaultDb);
-          return this.defaultDb;
+          DbHelper.write(DbHelper.defaultDb);
+          return DbHelper.defaultDb;
         }
       }
       const data = fs.readFileSync(DB_PATH, "utf8");
@@ -126,12 +125,12 @@ class DbHelper {
       // Ensure arrays and objects exist
       if (!db.targets) db.targets = [];
       if (!db.scans) db.scans = [];
-      if (!db.settings) db.settings = { ...this.defaultDb.settings };
+      if (!db.settings) db.settings = { ...DbHelper.defaultDb.settings };
       if (!db.logs) db.logs = [];
       return db;
     } catch (e) {
       console.error("Lỗi đọc file db.json, khởi tạo lại mặc định:", e);
-      return this.defaultDb;
+      return DbHelper.defaultDb;
     }
   }
 
@@ -144,7 +143,7 @@ class DbHelper {
   }
 
   static addLog(message: string, type: 'info' | 'warn' | 'error' = 'info') {
-    const db = this.read();
+    const db = DbHelper.read();
     db.logs.unshift({
       timestamp: new Date().toISOString(),
       message,
@@ -154,7 +153,7 @@ class DbHelper {
     if (db.logs.length > 100) {
       db.logs = db.logs.slice(0, 100);
     }
-    this.write(db);
+    DbHelper.write(db);
   }
 }
 
@@ -846,6 +845,7 @@ async function startServer() {
 
   // Vite development integration
   if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",

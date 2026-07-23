@@ -40,6 +40,9 @@ export default async function handler(req: any, res: any) {
     }
 
     req.url = targetPath;
+    req.originalUrl = targetPath;
+    delete req._parsedUrl;
+    delete req._parsedUrlAndQuery;
 
     return cachedApp(req, res);
   } catch (err: any) {
