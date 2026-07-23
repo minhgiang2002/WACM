@@ -463,7 +463,9 @@ Hãy đưa ra đánh giá khách quan. Nếu đó chỉ là một thay đổi th
   }
 }
 
-async function startServer() {
+async function startServer(options: { listen?: boolean } = {}) {
+  const isServerless = Boolean(process.env.VERCEL || process.env.VERCEL_ENV || process.env.AWS_LAMBDA_FUNCTION_NAME);
+  const shouldListen = options.listen ?? (!isServerless && (process.env.NODE_ENV !== "test"));
   const app = express();
   const PORT = 3000;
 
@@ -859,7 +861,7 @@ async function startServer() {
     });
   }
 
-  if (!process.env.VERCEL) {
+  if (shouldListen) {
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`[WACM Backend] Server running on http://localhost:${PORT} in ${process.env.NODE_ENV || "development"} mode`);
       DbHelper.addLog("Khởi động hệ thống WACM thành công. Cổng phát sóng: 3000.");
@@ -869,10 +871,16 @@ async function startServer() {
   return app;
 }
 
-export const app = express();
+// Auto-start server when executed directly as main script
+const isDirectRun = Boolean(
+  process.argv[1] &&
+  (process.argv[1].endsWith("server.ts") ||
+   process.argv[1].endsWith("server.cjs") ||
+   process.argv[1].endsWith("server.js"))
+);
 
-if (!process.env.VERCEL) {
-  startServer();
+if (isDirectRun && !process.env.VERCEL) {
+  startServer({ listen: true });
 }
 
 export default startServer;

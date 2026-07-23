@@ -5,7 +5,7 @@ let cachedApp: any = null;
 export default async function handler(req: any, res: any) {
   try {
     if (!cachedApp) {
-      cachedApp = await startServer();
+      cachedApp = await startServer({ listen: false });
     }
 
     // Reconstruct requested API URL from Vercel rewrite parameter
