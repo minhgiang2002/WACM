@@ -58,6 +58,7 @@ const DB_PATH = process.env.VERCEL ? "/tmp/db.json" : path.join(process.cwd(), "
 
 // Helper class for database management
 class DbHelper {
+  private static memoryDb: DB | null = null;
   private static defaultDb: DB = {
     targets: [
       {
@@ -105,25 +106,32 @@ class DbHelper {
   };
 
   static read(): DB {
+    if (DbHelper.memoryDb) {
+      return DbHelper.memoryDb;
+    }
     try {
       if (!fs.existsSync(DB_PATH)) {
         const seedPath = path.join(process.cwd(), "db.json");
-        if (process.env.VERCEL && fs.existsSync(seedPath)) {
+        if (fs.existsSync(seedPath)) {
           try {
-            fs.copyFileSync(seedPath, DB_PATH);
+            const seedData = fs.readFileSync(seedPath, "utf8");
+            DbHelper.memoryDb = JSON.parse(seedData);
+            try { fs.writeFileSync(DB_PATH, seedData, "utf8"); } catch (_) {}
+            return DbHelper.memoryDb!;
           } catch (e) {
-            DbHelper.write(DbHelper.defaultDb);
-            return JSON.parse(JSON.stringify(DbHelper.defaultDb));
+            DbHelper.memoryDb = JSON.parse(JSON.stringify(DbHelper.defaultDb));
+            return DbHelper.memoryDb!;
           }
         } else {
-          DbHelper.write(DbHelper.defaultDb);
-          return JSON.parse(JSON.stringify(DbHelper.defaultDb));
+          DbHelper.memoryDb = JSON.parse(JSON.stringify(DbHelper.defaultDb));
+          try { fs.writeFileSync(DB_PATH, JSON.stringify(DbHelper.defaultDb, null, 2), "utf8"); } catch (_) {}
+          return DbHelper.memoryDb!;
         }
       }
       const data = fs.readFileSync(DB_PATH, "utf8");
       if (!data || !data.trim()) {
-        DbHelper.write(DbHelper.defaultDb);
-        return JSON.parse(JSON.stringify(DbHelper.defaultDb));
+        DbHelper.memoryDb = JSON.parse(JSON.stringify(DbHelper.defaultDb));
+        return DbHelper.memoryDb!;
       }
       const db = JSON.parse(data);
       // Ensure arrays and objects exist
@@ -131,18 +139,21 @@ class DbHelper {
       if (!Array.isArray(db.scans)) db.scans = [];
       if (!db.settings) db.settings = { ...DbHelper.defaultDb.settings };
       if (!Array.isArray(db.logs)) db.logs = [];
+      DbHelper.memoryDb = db;
       return db;
     } catch (e) {
-      console.error("Lỗi đọc file db.json, khởi tạo lại mặc định:", e);
-      return JSON.parse(JSON.stringify(DbHelper.defaultDb));
+      console.error("Lỗi đọc file db.json, sử dụng memory fallback:", e);
+      DbHelper.memoryDb = JSON.parse(JSON.stringify(DbHelper.defaultDb));
+      return DbHelper.memoryDb!;
     }
   }
 
   static write(db: DB) {
+    DbHelper.memoryDb = db;
     try {
       fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2), "utf8");
     } catch (e) {
-      console.error("Lỗi ghi file db.json:", e);
+      console.error("Lỗi ghi file db.json (chạy trên RAM):", e);
     }
   }
 
@@ -439,29 +450,39 @@ Hãy đưa ra đánh giá khách quan. Nếu đó chỉ là một thay đổi th
 
 Đảm bảo chỉ phản hồi chuỗi JSON hợp lệ không chứa bất kỳ markdown nào xung quanh (không dùng \`\`\`json).`;
 
-  const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
-    contents: prompt,
-    config: {
-      responseMimeType: "application/json",
-    }
-  });
-
-  const text = response.text?.trim() || "{}";
   try {
-    const result = JSON.parse(text);
-    return {
-      riskLevel: (result.riskLevel || 'LOW') as 'LOW' | 'MEDIUM' | 'HIGH',
-      summary: result.summary || "Phân tích thay đổi hoàn thành.",
-      details: result.details || "Không phát hiện mối đe dọa bảo mật khả nghi.",
-      analyzedAt: new Date().toISOString()
-    };
-  } catch (err) {
-    console.error("Lỗi phân tích JSON phản hồi từ Gemini:", text, err);
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+      }
+    });
+
+    const text = response.text?.trim() || "{}";
+    try {
+      const result = JSON.parse(text);
+      return {
+        riskLevel: (result.riskLevel || 'LOW') as 'LOW' | 'MEDIUM' | 'HIGH',
+        summary: result.summary || "Phân tích thay đổi hoàn thành.",
+        details: result.details || "Không phát hiện mối đe dọa bảo mật khả nghi.",
+        analyzedAt: new Date().toISOString()
+      };
+    } catch (err) {
+      console.error("Lỗi phân tích JSON phản hồi từ Gemini:", text, err);
+      return {
+        riskLevel: 'LOW' as const,
+        summary: "Cập nhật tài nguyên web được quét.",
+        details: `Không thể chuyển đổi phân tích thành định dạng cấu trúc. Nội dung phân tích thô: \n\n${text}`,
+        analyzedAt: new Date().toISOString()
+      };
+    }
+  } catch (err: any) {
+    console.error("Lỗi gọi Gemini API trong runAiAnalysisOnDiff:", err);
     return {
       riskLevel: 'LOW' as const,
-      summary: "Cập nhật tài nguyên web được quét.",
-      details: `Không thể chuyển đổi phân tích thành định dạng cấu trúc. Nội dung phân tích thô: \n\n${text}`,
+      summary: "Đã hoàn thành quét nội dung.",
+      details: "Dịch vụ AI phân tích tự động tạm thời chưa kết nối được: " + (err?.message || String(err)),
       analyzedAt: new Date().toISOString()
     };
   }
@@ -473,7 +494,19 @@ async function startServer(options: { listen?: boolean } = {}) {
   const app = express();
   const PORT = 3000;
 
-  app.use(express.json());
+  app.use(express.json({ limit: "10mb" }));
+  app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+
+  // CORS middleware for cross-origin and iframe compatibility
+  app.use((req, res, next) => {
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization");
+    res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    if (req.method === "OPTIONS") {
+      return res.sendStatus(200);
+    }
+    next();
+  });
 
   // Setup Gemini client if available
   let geminiClient: GoogleGenAI | undefined;
@@ -833,7 +866,7 @@ async function startServer(options: { listen?: boolean } = {}) {
   // --- Background Scheduler (Simulator) ---
   // We check if we need to auto-scan active targets periodically based on scanIntervalHours
   // To keep development responsive and simulate real periodic scanning, we run a check every 2 minutes
-  if (!process.env.VERCEL) {
+  if (!isServerless && options.listen !== false) {
     setInterval(async () => {
       try {
         const db = DbHelper.read();
@@ -860,19 +893,25 @@ async function startServer(options: { listen?: boolean } = {}) {
   }
 
   // Vite development integration
-  if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
-    const { createServer: createViteServer } = await import("vite");
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else if (!process.env.VERCEL) {
+  if (process.env.NODE_ENV !== "production" && !isServerless && options.listen !== false) {
+    try {
+      const { createServer: createViteServer } = await import("vite");
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa",
+      });
+      app.use(vite.middlewares);
+    } catch (e) {
+      console.error("Không thể khởi tạo Vite middleware trong môi trường này:", e);
+    }
+  } else if (!isServerless && options.listen !== false) {
     const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
+    if (fs.existsSync(distPath)) {
+      app.use(express.static(distPath));
+      app.get('*', (req, res) => {
+        res.sendFile(path.join(distPath, 'index.html'));
+      });
+    }
   }
 
   if (shouldListen) {

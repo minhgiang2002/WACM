@@ -205,7 +205,7 @@ export default function App() {
     { id: "settings", label: "Cấu hình & Cảnh báo", sub: "Kênh báo động, lập lịch", icon: SettingsIcon },
   ];
 
-  if (isLoading) {
+  if (isLoading && targets.length === 0) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center text-slate-600 gap-3 font-sans">
         <div className="relative w-14 h-14 flex items-center justify-center">
@@ -214,13 +214,13 @@ export default function App() {
         </div>
         <div className="text-center mt-2">
           <h2 className="text-sm font-display font-bold text-slate-800 tracking-wider">WEB ASSET CHANGE MONITOR</h2>
-          <p className="text-[11px] text-slate-400 mt-1">Đang khởi tạo kết nối cơ sở dữ liệu giám sát...</p>
+          <p className="text-[11px] text-slate-400 mt-1">Đang kết nối dịch vụ backend WACM...</p>
         </div>
       </div>
     );
   }
 
-  if (error) {
+  if (error && targets.length === 0) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center text-center p-4 font-sans">
         <div className="p-6 bg-white border border-slate-200 rounded-2xl max-w-md w-full space-y-4 shadow-xl">
@@ -236,16 +236,18 @@ export default function App() {
             <button
               onClick={() => {
                 setError("");
-                fetchDashboardData();
+                setIsLoading(true);
+                fetchDashboardData(false, 0);
               }}
               className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-xs font-semibold rounded-lg text-white transition shadow-sm active:scale-95"
             >
-              <RefreshCw className="w-3.5 h-3.5 animate-spin-slow" /> Thử kết nối lại ngay
+              <RefreshCw className="w-3.5 h-3.5" /> Thử kết nối lại ngay
             </button>
 
             <button
               onClick={() => {
                 setError("");
+                setIsLoading(false);
                 setTargets([
                   {
                     id: "target-1",
@@ -259,14 +261,27 @@ export default function App() {
                     status: "active",
                     error: null,
                     createdAt: new Date().toISOString()
+                  },
+                  {
+                    id: "target-2",
+                    name: "Lucide Icons CDN Script",
+                    url: "https://unpkg.com/lucide@0.244.0/dist/umd/lucide.min.js",
+                    type: "js",
+                    userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) WebAssetChangeMonitor/1.0",
+                    headers: "{}",
+                    lastScanned: new Date().toISOString(),
+                    lastHash: "416148121e2bf8391fecedf078d56ddd387b4b5c24dbc2b89d7c3e1c517c7e9e",
+                    status: "active",
+                    error: null,
+                    createdAt: new Date().toISOString()
                   }
                 ]);
                 setSettings({ telegramToken: "", telegramChatId: "", slackWebhook: "", enableAutoAI: false, scanIntervalHours: 12 });
-                setLogs([{ timestamp: new Date().toISOString(), message: "Chế độ trải nghiệm ngoại tuyến (Demo mode) đã kích hoạt.", type: "warn" }]);
+                setLogs([{ timestamp: new Date().toISOString(), message: "Đã kích hoạt chế độ giao diện ngoại tuyến (Demo mode).", type: "warn" }]);
               }}
               className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-medium rounded-lg transition"
             >
-              Dùng chế độ trải nghiệm tạm thời
+              Xem giao diện với dữ liệu mẫu (Demo Mode)
             </button>
           </div>
         </div>
@@ -383,6 +398,27 @@ export default function App() {
       {/* Main Content Pane */}
       <main className="flex-1 overflow-y-auto px-5 py-6 sm:px-8 sm:py-8 space-y-6">
         
+        {/* Inline Connection Alert Banner if background sync encounters an issue */}
+        {error && (
+          <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded-xl p-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs shadow-sm">
+            <div className="flex items-center gap-2.5">
+              <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0" />
+              <div>
+                <span className="font-semibold">Lỗi đồng bộ máy chủ:</span> {error}
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                setError("");
+                fetchDashboardData(false, 0);
+              }}
+              className="shrink-0 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-medium rounded-lg transition flex items-center gap-1.5 active:scale-95"
+            >
+              <RefreshCw className="w-3 h-3" /> Kết nối lại
+            </button>
+          </div>
+        )}
+
         {/* Tab content switcher with standard animations */}
         <div className="max-w-7xl mx-auto space-y-6">
           
